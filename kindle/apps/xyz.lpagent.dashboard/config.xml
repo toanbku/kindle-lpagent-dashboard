@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<!-- WAF config for the LP Agent dashboard (registered in appreg.db as com.lpagent.dashboard).
+     Modeled on /var/local/mesquite/webview/config.xml from the device. -->
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:kindle="http://kindle.amazon.com/ns/widget-extensions"
+    id="com.lpagent.dashboard" version="1.0" viewmodes="application">
+
+    <name xml:lang="en">LP Agent</name>
+    <description xml:lang="en">LP Agent dashboard</description>
+
+    <content src="index.html" />
+
+    <kindle:gestures>
+        <kindle:param name="tap" value="yes" />
+    </kindle:gestures>
+
+    <kindle:network>
+        <kindle:asset key="enableCaching" value="false" />
+    </kindle:network>
+
+    <kindle:chrome>
+        <kindle:asset key="configureSearchBar" value="system" />
+    </kindle:chrome>
+
+    <kindle:messaging>
+        <kindle:app name="com.lab126.chromebar" value="yes" />
+        <kindle:app name="com.lab126.appmgrd" value="yes" />
+        <kindle:app name="com.lab126.powerd" value="yes" />
+    </kindle:messaging>
+
+    <feature name="http://kindle.amazon.com/apis" required="true">
+        <param name="appmgr" value="yes" />
+        <param name="net" value="yes" />
+        <param name="gestures" value="yes" />
+        <param name="chrome" value="yes" />
+        <param name="device" value="yes" />
+        <param name="messaging" value="yes" />
+        <param name="viewport" value="yes" />
+        <param name="dev" value="yes" />
+    </feature>
+
+    <kindle:settings>
+        <kindle:setting name="saveContext" value="no" />
+    </kindle:settings>
+</widget>

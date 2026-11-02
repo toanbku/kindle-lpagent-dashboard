@@ -1,0 +1,14 @@
+{
+  "name": "kindle-lpagent-dashboard",
+  "owner": {
+    "name": "toanbku"
+  },
+  "description": "Claude Code skill for the Kindle LP Agent e-ink dashboard",
+  "plugins": [
+    {
+      "name": "kindle-lpagent-dashboard",
+      "source": "./",
+      "description": "Install, update and troubleshoot an LP Agent e-ink dashboard on a jailbroken Kindle"
+    }
+  ]
+}

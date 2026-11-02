@@ -1,0 +1,11 @@
+{
+    "minVersion": 1,
+    "version": 1,
+    "waf": true,
+    "id": "xyz.lpagent.dashboard",
+    "name": "LP Agent",
+    "author": "toanbku",
+    "description": "LP Agent dashboard",
+    "icon": "icon.png",
+    "entrypoint": "index.html"
+}

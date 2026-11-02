@@ -1,0 +1,18 @@
+# Secrets and device runtime state: never commit these
+kindle/lpdash/config.sh
+kindle/lpdash/data/
+kindle/lpdash/log.txt
+kindle/lpdash/*.pid
+kindle/lpdash/boots.txt
+kindle/lpdash/autostart.off
+kindle/lpdash/diag.txt
+kindle/lpdash/*.bak*
+kindle/lpdash/*.real.html
+
+# Local scratch and render output
+_local/
+out/
+
+.DS_Store
+._*
+__pycache__/

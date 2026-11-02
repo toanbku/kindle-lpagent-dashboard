@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="user-scalable=no">
+<title>LP Agent</title>
+<!--
+  LP Agent dashboard for the Kindle (WAF app run by /usr/bin/mesquite).
+  The Kindle browser is an old WebKit: NO flexbox/grid/ES6. Tables + absolute positioning + ES5 only.
+  Data is written by the daemon /mnt/us/lpdash/lpdashd.sh to ../../lpdash/data/*.js (window.LPRAW).
+  Designed at a fixed 1072x1448 (Paperwhite 4), then zoomed to fit the real screen.
+  Open with ?demo=1 to use the fake data in demo/ (for screenshots and layout work).
+-->
+<style>
+  @font-face { font-family: InterK; src: url('fonts/Inter-500.ttf') format('truetype'); font-weight: 500; }
+  @font-face { font-family: InterK; src: url('fonts/Inter-700.ttf') format('truetype'); font-weight: 700; }
+  @font-face { font-family: InterK; src: url('fonts/Inter-800.ttf') format('truetype'); font-weight: 800; }
+  html, body { margin: 0; padding: 0; background: #fff; overflow: hidden; }
+  #stage { position: relative; width: 1072px; overflow: hidden; margin: 0 auto;
+           background: #fff; color: #000; font-family: InterK, Helvetica, Arial, sans-serif; font-weight: 500; }
+  table { border-collapse: collapse; border-spacing: 0; }
+  td { padding: 0; vertical-align: baseline; }
+  .pad { padding: 0 56px; }
+  .label { font-size: 24px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #6a6a6a; }
+
+  #hdr { position: relative; height: 80px; background: #000; color: #fff; }
+  #hdr .brand { position: absolute; left: 56px; top: 0; line-height: 80px; font-size: 30px; font-weight: 800; letter-spacing: 5px; }
+  #hdr .brand span { font-size: 21px; font-weight: 700; letter-spacing: 2px; color: #ccc; margin-left: 10px; }
+  #hdr .time { position: absolute; right: 56px; top: 0; line-height: 80px; font-size: 28px; font-weight: 700; }
+
+  .banner { background: #000; color: #fff; font-size: 26px; font-weight: 800; padding: 10px 56px; border-top: 2px solid #fff; }
+
+  .hero { padding-top: 16px; padding-bottom: 16px; }
+  .hero table.top { width: 100%; }
+  .hero td.when { text-align: right; font-size: 24px; font-weight: 700; color: #333; white-space: nowrap; }
+  .hero .num { font-size: 112px; font-weight: 800; line-height: 1.05; letter-spacing: -3px; margin-top: 4px; white-space: nowrap; }
+  .hero .num span { font-size: 52px; letter-spacing: 0; margin-left: 14px; }
+  .hero .sub { font-size: 30px; color: #333; margin-top: 8px; white-space: nowrap; }
+  .hero .sub b { font-weight: 800; color: #000; }
+
+  table.grid { width: 100%; table-layout: fixed; border-top: 4px solid #000; border-bottom: 4px solid #000; }
+  table.grid td { vertical-align: top; padding: 14px 0 14px 24px; border-left: 2px solid #000; }
+  table.grid td.first { border-left: 0; padding-left: 0; }
+  table.grid tr.r2 td { border-top: 2px solid #000; }
+  .tile-v { font-size: 46px; font-weight: 800; margin-top: 4px; line-height: 1.05; white-space: nowrap; }
+  .tile-v small { font-size: 26px; font-weight: 700; margin-left: 4px; }
+  .tile-s { font-size: 24px; color: #333; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
+
+  .sec { padding-top: 22px; }
+  table.head { width: 100%; margin-bottom: 10px; }
+  table.head td.r { text-align: right; font-size: 26px; font-weight: 700; color: #333; }
+
+  .pos { border-top: 3px solid #000; padding: 10px 0 8px; }
+  .pos.last { border-bottom: 3px solid #000; }
+  table.row { width: 100%; }
+  .pair { font-size: 36px; font-weight: 800; white-space: nowrap; }
+  .val { font-size: 36px; font-weight: 800; text-align: right; white-space: nowrap; }
+  .meta { font-size: 24px; color: #333; white-space: nowrap; overflow: hidden; }
+  table.l2 { width: 100%; margin-top: 6px; }
+  table.l2 td { vertical-align: middle; height: 36px; }
+  .pill { display: inline-block; vertical-align: middle; line-height: 24px; font-size: 20px; font-weight: 800; letter-spacing: 2px; padding: 4px 10px; border: 3px solid #000; white-space: nowrap; }
+  .pill.in { background: #000; color: #fff; }
+  .dot { display: inline-block; width: 12px; height: 12px; border-radius: 6px; margin-right: 8px; vertical-align: 1px; }
+  .pill.in .dot { background: #fff; }
+  .pill.out .dot { width: 8px; height: 8px; border: 2px solid #000; }
+  .mini { position: relative; height: 30px; margin: 0 18px; }
+  .mini .track { position: absolute; left: 0; right: 0; top: 13px; height: 4px; background: #6a6a6a; }
+  .mini .band { position: absolute; top: 5px; height: 14px; background: #d6d6d6; border: 3px solid #000; }
+  .mini .mk { position: absolute; top: 0; height: 30px; width: 6px; margin-left: -3px; background: #000; }
+  .pnl { font-size: 26px; font-weight: 800; text-align: right; white-space: nowrap; }
+
+  table.closed { width: 100%; }
+  table.closed td { font-size: 26px; padding: 8px 0; border-top: 2px solid #d6d6d6; white-space: nowrap; vertical-align: middle; }
+  table.closed tr.first td { border-top: 3px solid #000; }
+  table.closed td.p { font-weight: 800; }
+  table.closed td.m { color: #333; font-size: 24px; }
+  table.closed td.n { text-align: right; font-weight: 800; }
+  table.closed td.c { text-align: right; color: #333; font-size: 24px; width: 130px; }
+
+  table.det { width: 100%; }
+  table.det td { font-size: 25px; padding: 8px 0; border-top: 2px solid #d6d6d6; white-space: nowrap; vertical-align: middle; }
+  table.det tr.first td { border-top: 3px solid #000; }
+  table.det tr.th td { font-size: 20px; font-weight: 700; letter-spacing: 2px; color: #6a6a6a; text-transform: uppercase; border-top: 0; padding: 0 0 6px; }
+  table.det td.p { font-weight: 800; }
+  table.det td.n { text-align: right; }
+  table.det td.b { text-align: right; font-weight: 800; }
+  .sec2 { padding-top: 18px; }
+  #ftr { position: relative; height: 50px; margin-top: 16px; border-top: 4px solid #000; font-size: 22px; font-weight: 700; color: #333; }
+  #ftr .l { position: absolute; left: 56px; top: 0; line-height: 50px; }
+  #ftr .r { position: absolute; right: 56px; top: 0; line-height: 50px; }
+  .empty { font-size: 30px; color: #333; padding: 40px 56px; line-height: 1.4; }
+  .err { font-size: 22px; color: #000; padding: 20px 56px; white-space: pre-wrap; word-wrap: break-word; }
+</style>
+</head>
+<body>
+<div id="stage"><div class="empty">Loading LP Agent…</div></div>
+
+<script>
+var DEMO = /[?&]demo=1/.test(location.search);
+var BASE = DEMO ? 'demo/' : '../../lpdash/data/';
+var W = 1072, H = 1448, FOOTER = 60;
+var MINUS = '−';
+var lastFetched = null, lastStale = null, busy = false;
+var kindle = window.kindle || (window.top && window.top.kindle);
+
+// ---------- Kindle chrome ----------
+try { kindle.net.setWirelessPrompt('never'); } catch (e) {}
+
+// ---------- helpers ----------
+function $(id) { return document.getElementById(id); }
+function f(x) { var n = parseFloat(x); return isNaN(n) ? 0 : n; }
+function sgn(x) { return x > 0 ? '+' : (x < 0 ? MINUS : ''); }
+function commas(s) { return s.replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function num(a, dp) {
+  if (a > 0 && a < 0.5 * Math.pow(10, -dp)) return String(Number(a.toPrecision(1)));
+  var p = a.toFixed(dp).split('.');
+  return commas(p[0]) + (p[1] ? '.' + p[1] : '');
+}
+var U = 'USD';
+function money(x, o) {
+  o = o || {};
+  var a = Math.abs(x), s = o.signed ? sgn(x) : '';
+  if (U === 'USD') return s + '$' + num(a, a >= 1000 ? 0 : 2);
+  return s + num(a, 3) + (o.unit === false ? '' : ' ' + U);
+}
+function moneyBig(x, o) {
+  o = o || {};
+  var a = Math.abs(x), s = o.signed ? sgn(x) : '';
+  if (U === 'USD') return s + '$' + num(a, a >= 1000 ? 0 : 2);
+  return s + num(a, 3) + '<small>' + U + '</small>';
+}
+function pct(x) { return sgn(x) + Math.abs(x).toFixed(1) + '%'; }
+function p2(n) { return (n < 10 ? '0' : '') + n; }
+// ISO "2026-11-01T18:15:33.000Z" -> ms (parsed by hand: old WebKit gets Date.parse wrong)
+function isoMs(s) {
+  if (!s) return NaN;
+  var m = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d+)?(Z|([+-])(\d\d):?(\d\d))?$/.exec(s);
+  if (!m) return NaN;
+  var t = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+  if (m[8]) t -= (m[8] === '+' ? 1 : -1) * ((+m[9]) * 60 + (+m[10])) * 60000;
+  return t;
+}
+var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+function nowMs() { return new Date().getTime(); }
+function ago(ms) {
+  var m = Math.round((nowMs() - ms) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + 'm ago';
+  var h = Math.round(m / 60);
+  if (h < 24) return h + 'h ago';
+  return Math.round(h / 24) + 'd ago';
+}
+function ageTxt(ms) {
+  var d = (nowMs() - ms) / 86400000;
+  return d < 1 ? Math.round(d * 24) + 'h' : d.toFixed(1) + 'd';
+}
+// local time from TZ_OFFSET_MIN (minutes); the Kindle WebKit timezone is not trusted
+function clock(ms, tzMin) {
+  var d = new Date(ms + tzMin * 60000);
+  return MON[d.getUTCMonth()] + ' ' + d.getUTCDate() + ' · ' + p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes());
+}
+function rows(x) {
+  var d = x && x.data !== undefined ? x.data : x;
+  if (d && !(d instanceof Array)) d = d.data || d.items || [];
+  return d || [];
+}
+function sum(arr, k) { var s = 0; for (var i = 0; i < arr.length; i++) s += arr[i][k] || 0; return s; }
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+var PROTOCOL = { uniswap_v3: 'Uniswap v3', uniswap_v4: 'Uniswap v4', meteora: 'Meteora DLMM', meteora_damm_v2: 'Meteora DAMM v2' };
+
+// ---------- shape the raw API responses ----------
+function build(R) {
+  var meta = R.meta || {};
+  var chain = (meta.chain || 'ROBINHOOD').toUpperCase();
+  var useUsd = chain !== 'SOL';
+  U = useUsd ? 'USD' : 'SOL';
+  function m(usd, nat) { return useUsd ? f(usd) : f(nat); }
+
+  var opened = rows(R.open), overview = rows(R.overview), closed = rows(R.closed), bal = rows(R.balance);
+  var i, p, r;
+
+  function ssum(key, period) {
+    var k = key + (useUsd ? '' : '_native'), s = 0;
+    for (var j = 0; j < overview.length; j++) s += f((overview[j][k] || {})[period]);
+    return s;
+  }
+  var closed1m = 0, wins1m = 0, ovUpd = 0;
+  for (i = 0; i < overview.length; i++) {
+    r = overview[i];
+    var c = f((r.closed_lp || {})['1M']);
+    closed1m += c; wins1m += f((r.win_rate || {})['1M']) * c;
+    var u = isoMs(r.updated_at); if (u > ovUpd) ovUpd = u;
+  }
+
+  var pos = [];
+  for (i = 0; i < opened.length; i++) {
+    p = opened[i];
+    var pr = p.priceRange || [], pnl = p.pnl || {};
+    pos.push({
+      pair: p.pairName, protocol: PROTOCOL[p.protocol] || p.protocol,
+      leader: (p.followInfo || {}).sourceLabel || null,
+      openedAt: isoMs(p.createdAt),
+      value: m(p.currentValue, p.valueNative),
+      pnl: m(pnl.value, pnl.valueNative),
+      pnlPct: f(useUsd ? pnl.percent : pnl.percentNative),
+      unclaimed: m(p.unCollectedFee !== undefined ? p.unCollectedFee : p.uncollectedFee, p.unCollectedFeeNative),
+      collected: m(p.collectedFee, p.collectedFeeNative),
+      inRange: !!(p.inRange !== undefined ? p.inRange : p.isInRange),
+      lower: pr.length > 2 ? f(pr[0]) : null, upper: pr.length > 2 ? f(pr[1]) : null, price: pr.length > 2 ? f(pr[2]) : null
+    });
+  }
+  pos.sort(function (a, b) { return b.value - a.value; });
+
+  var walletUsd = 0, tokens = [];
+  for (i = 0; i < bal.length; i++) {
+    var bu = f(bal[i].balanceInUsd !== undefined ? bal[i].balanceInUsd : bal[i].valueUsd);
+    walletUsd += bu;
+    if (bu >= 0.01) tokens.push({ sym: bal[i].symbol || '?', amt: f(bal[i].balance), usd: bu });
+  }
+  tokens.sort(function (a, b) { return b.usd - a.usd; });
+
+  var cl = [];
+  for (i = 0; i < closed.length && i < 25; i++) {
+    p = closed[i]; var pn = p.pnl || {};
+    cl.push({
+      pair: p.pairName, leader: (p.followInfo || {}).sourceLabel || null,
+      closedAt: isoMs(p.closeAt || p.close_At || p.updatedAt),
+      pnl: m(pn.value, pn.valueNative !== undefined ? pn.valueNative : p.pnlNative),
+      pnlPct: f(useUsd ? pn.percent : pn.percentNative)
+    });
+  }
+  var openVal = sum(pos, 'value');
+  return {
+    meta: meta, chain: chain, wallet: meta.owner || '',
+    networth: useUsd ? walletUsd + openVal + sum(pos, 'unclaimed') : null, walletIdle: useUsd ? walletUsd : null,
+    pnl: { d7: ssum('total_pnl', '7D'), m1: ssum('total_pnl', '1M'), all: ssum('total_pnl', 'ALL') },
+    fees: { d7: ssum('total_fee', '7D'), m1: ssum('total_fee', '1M') },
+    winRate: closed1m ? wins1m / closed1m : null, closed1m: closed1m, ovUpd: ovUpd,
+    open: pos, closed: cl, openVal: openVal, tokens: tokens
+  };
+}
+
+// ---------- render ----------
+var PAGE = 1, PAGES = 2, LAST_D = null, LAST_STALE = null, idleTimer = null;
+function fmtPrice(v) {
+  if (v == null) return '—';
+  var a = Math.abs(v);
+  if (a >= 1000) return num(a, 0);
+  if (a >= 1) return num(a, 2);
+  return String(Number(a.toPrecision(4)));
+}
+function fmtAmt(a) {
+  if (a >= 1000) return num(a, 0);
+  if (a >= 1) return num(a, 2);
+  return String(Number(a.toPrecision(3)));
+}
+function footer(D) {
+  var w = D.wallet;
+  return '<div id="ftr"><div class="l">Wallet ' + esc(w.slice(0, 6)) + '…' + esc(w.slice(-4)) + ' · every ' +
+    Math.round((D.meta.interval || 300) / 60) + ' min</div>' +
+    '<div class="r">page ' + PAGE + '/' + PAGES + ' · ' + (PAGE === 1 ? 'tap bottom half for more' : 'tap to go back') + '</div></div>';
+}
+function render(D, stale) {
+  LAST_D = D; LAST_STALE = stale;
+  if (PAGE === 2) return renderPage2(D, stale);
+  var tz = D.meta.tz != null ? D.meta.tz : 0;
+  var fetched = (D.meta.fetchedAt || 0) * 1000;
+  var unclaimed = sum(D.open, 'unclaimed');
+  var nw = D.networth != null ? D.networth : D.openVal;
+  var h = [];
+
+  setTitle('LP Agent · ' + (D.chain === 'SOL' ? 'Solana' : 'Robinhood'));
+  if (stale) h.push('<div class="banner">' + stale + '</div>');
+
+  // hero
+  var sub = [];
+  if (D.walletIdle != null) sub.push('wallet ' + money(D.walletIdle) + ' · in pools ' + money(D.openVal) + ' · fees ' + money(unclaimed));
+  sub.push('all-time PnL <b>' + money(D.pnl.all, { signed: true }) + '</b>');
+  h.push('<div class="hero pad"><table class="top"><tr><td class="label">' + (D.networth != null ? 'Net worth' : 'LP value') +
+    '</td><td class="when">updated ' + (fetched ? clock(fetched, tz) : '--') + '</td></tr></table>' +
+    '<div class="num">' + (U === 'USD' ? money(nw) : num(nw, 3) + '<span>' + U + '</span>') + '</div>' +
+    '<div class="sub" id="heroSub">' + sub.join(' · ') + '</div></div>');
+
+  // six tiles
+  var inR = 0, outNames = [];
+  for (var i = 0; i < D.open.length; i++) { if (D.open[i].inRange) inR++; else outNames.push(D.open[i].pair); }
+  var tiles = [
+    ['PnL 7D', moneyBig(D.pnl.d7, { signed: true }), 'fees 7D ' + money(D.fees.d7)],
+    ['PnL 30D', moneyBig(D.pnl.m1, { signed: true }), 'fees 30D ' + money(D.fees.m1)],
+    ['Win rate 30D', D.winRate != null ? Math.round(D.winRate * 100) + '%' : '—', plural(D.closed1m, 'closed position')],
+    ['Unrealized PnL', moneyBig(sum(D.open, 'pnl'), { signed: true }), plural(D.open.length, 'position') + ' · ' + money(D.openVal)],
+    ['In range', inR + '/' + D.open.length, 'out of range: ' + (outNames.length ? esc(outNames.join(', ')) : 'none')],
+    ['Unclaimed fees', moneyBig(unclaimed), 'across open positions']
+  ];
+  var g = '<div class="pad"><table class="grid">';
+  for (i = 0; i < 6; i++) {
+    if (i % 3 === 0) g += '<tr' + (i ? ' class="r2"' : '') + '>';
+    g += '<td' + (i % 3 === 0 ? ' class="first"' : '') + '><div class="label">' + tiles[i][0] + '</div><div class="tile-v">' +
+      tiles[i][1] + '</div><div class="tile-s">' + tiles[i][2] + '</div></td>';
+    if (i % 3 === 2) g += '</tr>';
+  }
+  h.push(g + '</table></div>');
+
+  // open positions
+  var o = '<div class="sec pad"><table class="head"><tr><td class="label">Open positions</td><td class="r">value · PnL</td></tr></table>';
+  if (!D.open.length) o += '<div class="empty" style="padding:14px 0">No open positions</div>';
+  for (i = 0; i < D.open.length; i++) {
+    var p = D.open[i], mini = '', side = '', dist = '';
+    if (p.lower != null && p.upper != null && p.price != null) {
+      var lo = Math.min(p.lower, p.price), hi = Math.max(p.upper, p.price);
+      var span = (hi - lo) || hi * 0.01, L = lo - span * 0.2, Hh = hi + span * 0.2;
+      var px = function (v) { return ((v - L) / (Hh - L) * 100).toFixed(2); };
+      mini = '<div class="mini"><div class="track"></div>' +
+        '<div class="band" style="left:' + px(p.lower) + '%;width:' + (px(p.upper) - px(p.lower)).toFixed(2) + '%;margin-left:-3px"></div>' +
+        '<div class="mk" style="left:' + px(p.price) + '%"></div></div>';
+      if (!p.inRange) {
+        if (p.price > p.upper) { side = ' ↑'; dist = ' ' + ((p.price / p.upper - 1) * 100).toFixed(1) + '%'; }
+        else if (p.price < p.lower) { side = ' ↓'; dist = ' ' + ((1 - p.price / p.lower) * 100).toFixed(1) + '%'; }
+      }
+    }
+    var metaParts = [p.protocol];
+    if (p.leader) metaParts.push('copying ' + esc(p.leader));
+    if (p.openedAt) metaParts.push(ageTxt(p.openedAt));
+    if (p.unclaimed) metaParts.push('unclaimed ' + money(p.unclaimed));
+    o += '<div class="pos' + (i === D.open.length - 1 ? ' last' : '') + '">' +
+      '<table class="row"><tr><td class="pair">' + esc(p.pair) + '</td><td class="val">' + money(p.value) + '</td></tr></table>' +
+      '<div class="meta">' + metaParts.join(' · ') + '</div>' +
+      '<table class="l2"><tr><td style="width:1px"><span class="pill ' + (p.inRange ? 'in' : 'out') + '"><span class="dot"></span>' +
+      (p.inRange ? 'IN RANGE' : 'OUT' + side + dist) + '</span></td><td>' + mini + '</td>' +
+      '<td class="pnl" style="width:1px">' + money(p.pnl, { signed: true }) + ' (' + pct(p.pnlPct) + ')</td></tr></table></div>';
+  }
+  h.push(o + '</div>');
+
+  h.push(footer(D));
+  $('stage').innerHTML = h.join('');
+  fitLine('heroSub', 20);
+  layout(true);
+}
+
+function renderPage2(D, stale) {
+  var tz = D.meta.tz != null ? D.meta.tz : 0, fetched = (D.meta.fetchedAt || 0) * 1000, i, h = [];
+  if (stale) h.push('<div class="banner">' + stale + '</div>');
+  h.push('<div class="hero pad" style="padding-bottom:0"><table class="top"><tr><td class="label">Details</td><td class="when">updated ' +
+    (fetched ? clock(fetched, tz) : '--') + '</td></tr></table></div>');
+
+  // open position details
+  var o = '<div class="sec2 pad"><table class="head"><tr><td class="label">Open positions</td><td class="r">' + D.open.length + '</td></tr></table>';
+  if (D.open.length) {
+    o += '<table class="det"><tr class="th"><td>Pair</td><td class="n">Range</td><td class="n">Price</td><td class="n">Claimed</td><td class="n">Unclaimed</td></tr>';
+    for (i = 0; i < D.open.length; i++) {
+      var p = D.open[i];
+      o += '<tr' + (i === 0 ? ' class="first"' : '') + '><td class="p">' + esc(p.pair) + (p.inRange ? '' : ' ○') + '</td><td class="n">' +
+        fmtPrice(p.lower) + ' – ' + fmtPrice(p.upper) + '</td><td class="b">' + fmtPrice(p.price) + '</td><td class="n">' +
+        money(p.collected) + '</td><td class="b">' + money(p.unclaimed) + '</td></tr>';
+    }
+    o += '</table>';
+  } else o += '<div class="empty" style="padding:10px 0">None</div>';
+  h.push(o + '</div>');
+
+  // wallet tokens
+  var t = '<div class="sec2 pad"><table class="head"><tr><td class="label">Wallet tokens</td><td class="r">' +
+    (D.walletIdle != null ? money(D.walletIdle) : '') + '</td></tr></table>';
+  if (D.tokens.length) {
+    t += '<table class="det">';
+    for (i = 0; i < D.tokens.length && i < 6; i++) {
+      var k = D.tokens[i];
+      t += '<tr' + (i === 0 ? ' class="first"' : '') + '><td class="p">' + esc(k.sym) + '</td><td class="n">' + fmtAmt(k.amt) +
+        '</td><td class="b" style="width:200px">' + money(k.usd) + '</td></tr>';
+    }
+    t += '</table>';
+  } else t += '<div class="empty" style="padding:10px 0">Wallet is empty</div>';
+  h.push(t + '</div>');
+
+  // recently closed (long list, trimmed to fit the screen)
+  if (D.closed.length) {
+    var c = '<div class="sec2 pad" id="closedSec"><table class="head"><tr><td class="label">Recently closed</td><td class="r">PnL' +
+      (U === 'USD' ? '' : ' (' + U + ')') + '</td></tr></table><table class="closed">';
+    for (i = 0; i < D.closed.length; i++) {
+      var x = D.closed[i];
+      c += '<tr class="' + (i === 0 ? 'first ' : '') + 'cr"><td class="p">' + esc(x.pair) + '</td><td class="m">' +
+        (x.closedAt ? ago(x.closedAt) : '') + (x.leader ? ' · ' + esc(x.leader) : '') + '</td><td class="n">' +
+        money(x.pnl, { signed: true, unit: false }) + '</td><td class="c">' + pct(x.pnlPct) + '</td></tr>';
+    }
+    h.push(c + '</table></div>');
+  }
+  h.push(footer(D));
+  $('stage').innerHTML = h.join('');
+  layout(true);
+}
+
+// ---------- paging: tap the bottom half -> page 2; any tap on page 2 goes back; 2 min idle -> page 1 ----------
+var lastTap = 0;
+function go(pg) {
+  if (pg === PAGE || !LAST_D) return;
+  PAGE = pg;
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+  if (PAGE !== 1) idleTimer = setTimeout(function () { go(1); }, 120000);
+  render(LAST_D, LAST_STALE); relayoutSoon();
+}
+function onTap(e) {
+  var t = nowMs(); if (t - lastTap < 700) return; lastTap = t;
+  var y = e && (e.clientY != null ? e.clientY : e.pageY);
+  var mid = (window.innerHeight || H) / 2;
+  if (PAGE === 1) { if (y == null || y > mid) go(2); }
+  else go(1);
+}
+document.addEventListener('click', onTap, false);
+
+// Fit the screen: innerHeight is only right after the Kindle draws its system bar (~2 s), so run it a few times.
+// 1) drop "Recently closed" rows until it fits; 2) if still too tall, zoom out.
+var lastAvail = 0;
+function layout(force) {
+  var st = $('stage'), avail = window.innerHeight || document.documentElement.clientHeight || H;
+  if (!force && avail === lastAvail) return;
+  lastAvail = avail;
+  st.style.zoom = '';
+  var sec = $('closedSec');
+  if (sec) {
+    var crs = sec.getElementsByTagName('tr'), list = [], i;
+    for (i = 0; i < crs.length; i++) if (/(^| )cr( |$)/.test(crs[i].className)) list.push(crs[i]);
+    while (list.length && st.offsetHeight > avail) { var last = list.pop(); last.parentNode.removeChild(last); }
+    if (!list.length) sec.parentNode.removeChild(sec);
+  }
+  var hh = st.offsetHeight, s = hh > avail ? avail / hh : 1;
+  if (s < 1) st.style.zoom = s.toFixed(3);
+}
+// shrink a one-line element's font until it fits its box (big numbers on the hero line)
+function fitLine(id, minPx) {
+  var el = $(id); if (!el) return;
+  var px = parseInt(window.getComputedStyle(el, null).fontSize, 10) || 30;
+  while (el.scrollWidth > el.clientWidth + 1 && px > minPx) { px--; el.style.fontSize = px + 'px'; }
+}
+function relayoutSoon() { setTimeout(function () { layout(); }, 1500); setTimeout(function () { layout(); }, 3500); setTimeout(function () { layout(); }, 7000); }
+function setTitle(t) {
+  try { kindle.messaging.sendMessage('com.lab126.chromebar', 'configureChrome',
+    { appId: 'com.lpagent.dashboard', topNavBar: { template: 'title', title: t } }); } catch (e) {}
+}
+
+function showMsg(html) { $('stage').innerHTML = '<div id="hdr"><div class="brand">LP AGENT</div></div><div class="empty">' + html + '</div>'; }
+window.onerror = function (msg, url, line) {
+  try { $('stage').innerHTML += '<div class="err">JS error: ' + esc(msg) + ' @' + esc(url) + ':' + line + '</div>'; } catch (e) {}
+};
+
+// ---------- load data with <script> tags (no XHR on file://) ----------
+function loadScript(name, cb) {
+  var s = document.createElement('script'), done = false;
+  s.src = BASE + name + '.js?t=' + nowMs();
+  s.onload = function () { if (!done) { done = true; cb(true); } s.parentNode.removeChild(s); };
+  s.onerror = function () { if (!done) { done = true; cb(false); } s.parentNode.removeChild(s); };
+  document.getElementsByTagName('head')[0].appendChild(s);
+}
+function loadAll(names, cb) {
+  var left = names.length, okAll = true;
+  for (var i = 0; i < names.length; i++) loadScript(names[i], function (ok) { if (!ok) okAll = false; if (--left === 0) cb(okAll); });
+}
+
+function staleText(meta) {
+  if (!meta || !meta.fetchedAt) return null;
+  var mins = Math.round((nowMs() - meta.fetchedAt * 1000) / 60000);
+  var limit = Math.max(15, Math.round((meta.interval || 300) / 60) * 3);
+  if (mins > limit) return 'STALE DATA (' + mins + ' MIN OLD): check Wi-Fi or relaunch "LP Agent Dashboard"';
+  if (meta.ok < meta.total) return 'Last refresh: ' + (meta.total - meta.ok) + '/' + meta.total + ' API calls failed (rate limit?)';
+  return null;
+}
+
+function tick() {
+  if (busy) return; busy = true;
+  window.LPRAW = window.LPRAW || {};
+  loadScript('meta', function (ok) {
+    var meta = window.LPRAW.meta;
+    if (!ok || !meta) {
+      busy = false;
+      if (lastFetched === null) showMsg('No data yet.<br>Open <b>LP Agent Dashboard</b> from the Library to start the data daemon, then give it about a minute.');
+      return;
+    }
+    var stale = staleText(meta);
+    if (meta.fetchedAt === lastFetched && stale === lastStale) { busy = false; return; } // nothing changed -> don't redraw (saves e-ink flashes)
+    loadAll(['open', 'overview', 'closed', 'balance'], function () {
+      try { render(build(window.LPRAW), stale); relayoutSoon(); lastFetched = meta.fetchedAt; lastStale = stale; }
+      catch (e) { showMsg('Render error: ' + esc(e && e.message)); }
+      busy = false;
+    });
+  });
+}
+
+// ---------- start ----------
+if (/[?&]page=2/.test(location.search)) PAGE = 2;   // for testing
+setTitle('LP Agent');
+window.onresize = function () { layout(); };
+tick();
+relayoutSoon();
+setInterval(function () { tick(); layout(); }, 30000);
+</script>
+</body>
+</html>

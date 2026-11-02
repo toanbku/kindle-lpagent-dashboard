@@ -1,0 +1,10 @@
+{
+  "name": "kindle-lpagent-dashboard",
+  "version": "0.1.0",
+  "description": "Install, update and troubleshoot an LP Agent e-ink dashboard on a jailbroken Kindle",
+  "author": { "name": "toanbku" },
+  "homepage": "https://github.com/toanbku/kindle-lpagent-dashboard",
+  "repository": "https://github.com/toanbku/kindle-lpagent-dashboard",
+  "license": "MIT",
+  "keywords": ["kindle", "e-ink", "lp-agent", "dashboard", "defi"]
+}
