@@ -3,6 +3,7 @@
 # Called from /mnt/us/emergency.sh, which the jailbreak's upstart job (kmc.conf) runs at framework_ready.
 # To disable autostart: create /mnt/us/lpdash/autostart.off (or delete /mnt/us/emergency.sh).
 # Safety net: 3 boots within 15 minutes -> autostart.off is created automatically (no boot loops).
+# It also starts lpwdog.sh, the hardware watchdog that resets the Kindle if it freezes.
 D=/mnt/us/lpdash
 BOOTS=$D/boots.txt
 log() { echo "$(date '+%m-%d %H:%M:%S') autostart: $*" >> "$D/log.txt"; }
@@ -18,7 +19,16 @@ if [ "$recent" -ge 3 ]; then
 fi
 tail -n 10 "$BOOTS" > "$BOOTS.tmp" && mv "$BOOTS.tmp" "$BOOTS"
 
-log "boot, waiting for the UI and Wi-Fi..."
+# What happened to the previous run: why the Kindle restarted (PWRON_LONGPRESS = power button held;
+# a watchdog reset shows a different reason) and the last status line the daemon wrote.
+[ -f "$D/heartbeat.txt" ] && mv "$D/heartbeat.txt" "$D/heartbeat.prev.txt"
+[ -f "$D/messages.tail" ] && mv "$D/messages.tail" "$D/messages.prev.txt"
+reason=$(dmesg | sed -n 's/.*Reboot Reason: *//p' | head -n 1)
+log "boot (reboot reason: ${reason:-unknown}), last heartbeat: $(head -n 1 "$D/heartbeat.prev.txt" 2>/dev/null)"
+rm -f "$D/lpdashd.pid"      # left behind if the last run froze; no daemon can be running yet
+nohup sh "$D/lpwdog.sh" > /dev/null 2>&1 &
+
+log "waiting for the UI and Wi-Fi..."
 sleep 60
 nohup sh "$D/lpdashd.sh" > /dev/null 2>&1 &
 sleep 30

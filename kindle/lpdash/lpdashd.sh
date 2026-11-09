@@ -10,12 +10,15 @@ API=https://api.lpagent.io/open-api/v1
 DATA=$DIR/data
 LOG=$DIR/log.txt
 PIDF=$DIR/lpdashd.pid
+HBF=/var/tmp/lpdash.hb          # heartbeat (uptime seconds) that lpwdog.sh checks, in RAM
 FBINK=${FBINK:-/mnt/us/libkh/bin/fbink}
 : "${INTERVAL:=300}" "${FLASH_EVERY:=12}" "${GAP:=6}"
 
 mkdir -p "$DATA"
 log() { echo "$(date '+%m-%d %H:%M:%S') $*" >> "$LOG"; }
 nap() { sleep "$1" & SLP=$!; wait $SLP; SLP=; }   # a sleep that SIGTERM can interrupt
+beat() { read up _ < /proc/uptime; echo "${up%.*}" > "$HBF"; }
+memavail() { awk '/^MemAvailable:/ {print $2 "k"}' /proc/meminfo; }
 
 # Single instance: quit if the pid in the pidfile is alive AND its /proc cmdline is lpdashd.
 # (Don't use ps: a child that has forked but not exec'd yet still shows as lpdashd.sh.)
@@ -31,6 +34,7 @@ trap cleanup INT TERM
 fetch() {
   name=$1; url="$API$2?chain=$LPA_CHAIN&owner=$LPA_OWNER$3"; i=0
   while [ $i -lt 4 ]; do
+    beat
     code=$(curl -sS -m 40 -o "$DATA/.$name.json" -w '%{http_code}' \
       -H "x-api-key: $LPA_KEY" -H 'accept: application/json' "$url" 2>>"$LOG")
     if [ "$code" = "200" ] && [ -s "$DATA/.$name.json" ]; then
@@ -50,8 +54,14 @@ fetch() {
 # Keep the device awake. preventScreenSaver can get reset to 0 (app switches, other tools),
 # so set it again every minute. If the screensaver is already up, wake the device.
 keepalive() {
+  beat
   lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
   st=$(lipc-get-prop com.lab126.powerd state 2>/dev/null)
+  # Evidence for when the whole Kindle freezes: /var/log/messages lives in RAM and is lost on the
+  # forced restart, so keep the last minute of it (and a status line) on /mnt/us.
+  # autostart.sh moves them to *.prev.txt at the next boot.
+  echo "$(date '+%m-%d %H:%M:%S') up=${up%.*}s state=$st memavail=$(memavail) load=$(cut -d' ' -f1-3 /proc/loadavg)" > "$DIR/heartbeat.txt"
+  tail -n 150 /var/log/messages > "$DIR/messages.tail" 2>/dev/null
   case "$st" in
     screenSaver|readyToSuspend|suspended)
       log "device is in $st -> waking it up"
@@ -78,7 +88,7 @@ while :; do
   fetch balance  /token/balance           ""          && ok=$((ok + 1))
   printf 'window.LPRAW=window.LPRAW||{};LPRAW.meta={fetchedAt:%s,ok:%s,total:4,chain:"%s",owner:"%s",interval:%s,tz:%s};\n' \
     "$(date +%s)" "$ok" "$LPA_CHAIN" "$LPA_OWNER" "$INTERVAL" "${TZ_OFFSET_MIN:-0}" > "$DATA/.meta.js" && mv "$DATA/.meta.js" "$DATA/meta.js"
-  log "fetch $ok/4"
+  log "fetch $ok/4 memavail=$(memavail)"
   [ -n "$ONESHOT" ] && { rm -f "$PIDF"; exit 0; }   # testing: run one round and quit
 
   n=$((n + 1))

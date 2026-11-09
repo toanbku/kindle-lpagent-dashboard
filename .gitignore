@@ -8,6 +8,9 @@ kindle/lpdash/autostart.off
 kindle/lpdash/diag.txt
 kindle/lpdash/*.bak*
 kindle/lpdash/*.real.html
+kindle/lpdash/heartbeat*.txt
+kindle/lpdash/messages*
+kindle/lpdash/wdog-strikes
 
 # Local scratch and render output
 _local/

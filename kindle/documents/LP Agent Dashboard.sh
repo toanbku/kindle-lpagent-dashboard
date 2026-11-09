@@ -7,6 +7,7 @@ D=/mnt/us/lpdash
 if [ ! -f "$D/config.sh" ]; then echo "Missing $D/config.sh (copy config.example.sh)"; exit 1; fi
 
 nohup sh "$D/lpdashd.sh" > /dev/null 2>&1 &
+nohup sh "$D/lpwdog.sh" > /dev/null 2>&1 &     # resets the Kindle if it freezes (WATCHDOG=0 turns it off)
 lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
 
 # register the app if it is missing (first run, or after a reset)

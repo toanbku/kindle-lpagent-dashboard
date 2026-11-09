@@ -27,6 +27,9 @@ file is the operator's checklist plus the gotchas that cost time.
   - Explain the risk, link the [Kindle Modding guide](https://kindlemodding.org) (WinterBreak) and let the user do the steps on the device.
   - Until the device is jailbroken, it must stay in airplane mode, because an automatic update can close the exploit.
 - **Don't edit a shell script while it runs.** For the daemon, the order is: stop it, copy the file, start it.
+- **The watchdog (`lpwdog.sh`) holds the hardware watchdog open.** Stop it only with a plain `kill` (TERM), which
+  disarms the chip. `kill -9` or `kill -STOP` on it resets the Kindle within 60 s. If the daemon is killed hard and
+  leaves its pidfile behind, the watchdog starts it again within a minute.
 - **The dev shell is passwordless root over telnet.**
   - Only allow the user's own computer IP (`DEV_SHELL_ALLOW_IP`).
   - Remind the user to turn it off when finished.
@@ -105,6 +108,7 @@ file is the operator's checklist plus the gotchas that cost time.
 | "No data yet" | The daemon is not running or `config.sh` is missing. Check `lpdash/log.txt`. |
 | STALE DATA banner | Wi-Fi is off or the API is failing. `log.txt` has the HTTP codes. `429` = rate limit, so keep the 6 s gaps and raise `INTERVAL`. `000` is a network/TLS blip that usually recovers on the next try. |
 | Screensaver appears | Something reset `preventScreenSaver` to 0. The daemon's `keepalive` sets it every minute, and when `state` is `screenSaver` it sends `wakeUp 1` (that property only works while the screensaver shows) and `lipc-set-prop com.lab126.blanket unload ad_screensaver` to clear the Special Offers lock screen. |
+| Kindle froze (clock on the top bar stopped too) | A whole-device hang, not the daemon. Hold power ~9 s. With `WATCHDOG=1` (default) `lpwdog.sh` feeds `/dev/watchdog0` (imx2-wdt, 60 s) and the chip resets a frozen Kindle by itself. Evidence of the last run: `lpdash/heartbeat.prev.txt`, `lpdash/messages.prev.txt`, and the `autostart: boot (reboot reason: ...)` line in `log.txt`. |
 | Kindle restarted by itself | Run `dmesg \| grep -i "reboot reason"`. `PWRON_LONGPRESS` = the power button was held for about 9 s, not a crash. |
 | Dashboard did not come back after a reboot | Check `log.txt` for `autostart:` lines and look for `lpdash/autostart.off` (the boot-loop guard creates it after 3 boots within 15 min). `/etc/upstart/kmc.conf` must exist. |
 | App opens then closes, or the Store opens instead | Don't launch through the Store or Mesquito: online, the Store loads Amazon's page. Use the registered WAF app (`register_waf.sql`). The scriptlet re-registers it if it is missing. |

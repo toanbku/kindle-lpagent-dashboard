@@ -60,8 +60,8 @@ Supported chains:
 
 | Item in the Library | What it does |
 |---|---|
-| LP Agent Dashboard | Starts the daemon and opens the dashboard. Registers the app if it is missing. |
-| LP Agent - Stop dashboard | Stops the daemon and turns the normal screensaver back on. |
+| LP Agent Dashboard | Starts the daemon and the watchdog, and opens the dashboard. Registers the app if it is missing. |
+| LP Agent - Stop dashboard | Stops the watchdog (disarming it) and the daemon, and turns the normal screensaver back on. |
 | LP Agent - Dev shell (on/off) | Root telnet shell on port 2323, only for `DEV_SHELL_ALLOW_IP` (see [Development](#development)). |
 | LP Agent - Diag | Writes system info to `lpdash/diag.txt` for debugging. |
 
@@ -78,6 +78,7 @@ Supported chains:
 | `FLASH_EVERY` | Full flashing refresh every N refreshes (default 12, about once an hour) |
 | `TZ_OFFSET_MIN` | Your UTC offset in minutes for the on-screen clock (e.g. `420` for UTC+7) |
 | `FRONTLIGHT` | Frontlight level set when the daemon starts (`0` = off, empty = leave it alone) |
+| `WATCHDOG` | `1` (default) = the hardware watchdog resets the Kindle if it freezes, `0` = off |
 | `DEV_SHELL_ALLOW_IP` | LAN IP of your computer for the dev shell (empty = dev shell disabled) |
 
 ## How it works
@@ -98,8 +99,17 @@ LP Agent Open API ──curl, every INTERVAL──> lpdash/lpdashd.sh ──> lp
   - The Kindle browser is an old WebKit, so the page uses ES5, tables and absolute positioning only (no flexbox, no Promise).
   - It is drawn at 1072x1448 and zoomed to fit.
   - The Kindle's top system bar can't be hidden, so the page sets its title instead.
+- **Watchdog** (`kindle/lpdash/lpwdog.sh`): a Kindle left on 24/7 can freeze hard (the clock stops, Wi-Fi drops,
+  nothing is logged). The i.MX6 has a hardware watchdog (`/dev/watchdog0`, 60 s) that resets the device unless it is
+  written to regularly; this script writes to it every 10 s, so a frozen Kindle restarts itself in about a minute.
+  - Once a minute it also checks the daemon: if the daemon died, it starts it again; if the daemon's heartbeat is more
+    than 15 minutes old (stuck), it reboots. That reboot check turns itself off after 3 reboots without a healthy hour
+    in between.
+  - The daemon saves a status line (`lpdash/heartbeat.txt`) and the tail of the system log (`lpdash/messages.tail`)
+    every minute, because `/var/log/messages` lives in RAM and is lost on the restart. At the next boot they become
+    `heartbeat.prev.txt` and `messages.prev.txt`, and `log.txt` gets the reboot reason and the last heartbeat.
 - **Autostart**: the jailbreak's `/etc/upstart/kmc.conf` runs `/mnt/us/emergency.sh` at boot, which starts
-  `lpdash/autostart.sh`. That script waits for the UI and Wi-Fi, then starts the daemon and the app.
+  `lpdash/autostart.sh`. That script starts the watchdog, waits for the UI and Wi-Fi, then starts the daemon and the app.
   - If the Kindle boots 3 times within 15 minutes, `lpdash/autostart.off` is created and autostart stops.
   - Create that file yourself to turn autostart off.
 
@@ -150,7 +160,8 @@ Tap the Dev shell item again to turn the shell off when you are done.
 | STALE DATA banner | Wi-Fi is off or the API is failing. `log.txt` shows the HTTP codes. If you see `429`, raise `INTERVAL`. |
 | Tapping the book shows a message, then goes back Home | The app opens about 4 s after the scriptlet exits, so wait a moment. If it never opens, check that `com.lpagent.dashboard` is in `/var/local/appreg.db` (`handlerIds` table). |
 | Net worth differs from the app by a few cents | Prices move between the two fetches. |
-| The Kindle restarted by itself | Run `dmesg \| grep -i "reboot reason"` from the dev shell. `PWRON_LONGPRESS` means the power button was held for about 9 s. |
+| The Kindle froze (the clock on the top bar stopped too) | Hold the power button for about 9 s. With the watchdog on (`WATCHDOG=1`) it restarts by itself within about a minute. Afterwards, `lpdash/heartbeat.prev.txt` shows the last minute it was alive and `messages.prev.txt` the system log just before. |
+| The Kindle restarted by itself | Look for `autostart: boot (reboot reason: ...)` and `watchdog:` lines in `log.txt`, or run `dmesg \| grep -i "reboot reason"`. `PWRON_LONGPRESS` means the power button was held for about 9 s. |
 | Can't reach the dev shell | The IP may have changed after a reboot (DHCP), and a reboot also turns the shell off. Tap the item again: it prints the IP. |
 
 **Uninstall:**
