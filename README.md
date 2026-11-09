@@ -80,6 +80,7 @@ Supported chains:
 | `FRONTLIGHT` | Frontlight level set when the daemon starts (`0` = off, empty = leave it alone) |
 | `WATCHDOG` | `1` (default) = the hardware watchdog resets the Kindle if it freezes, `0` = off |
 | `DEV_SHELL_ALLOW_IP` | LAN IP of your computer for the dev shell (empty = dev shell disabled) |
+| `DEV_SHELL_AT_BOOT` | `1` = turn the dev shell on at every boot (a restart turns it off otherwise) |
 
 ## How it works
 
@@ -105,9 +106,15 @@ LP Agent Open API ──curl, every INTERVAL──> lpdash/lpdashd.sh ──> lp
   - Once a minute it also checks the daemon: if the daemon died, it starts it again; if the daemon's heartbeat is more
     than 15 minutes old (stuck), it reboots. That reboot check turns itself off after 3 reboots without a healthy hour
     in between.
-  - The daemon saves a status line (`lpdash/heartbeat.txt`) and the tail of the system log (`lpdash/messages.tail`)
-    every minute, because `/var/log/messages` lives in RAM and is lost on the restart. At the next boot they become
-    `heartbeat.prev.txt` and `messages.prev.txt`, and `log.txt` gets the reboot reason and the last heartbeat.
+  - **It blocks system suspend while it runs.** On a Paperwhite 4 a suspend request hangs the Kindle, and the chip
+    pauses its countdown in low-power modes (a write-once bit set before Linux starts), so that hang never got reset.
+    A scratch file is bind-mounted over `/sys/power/state`, so suspend requests land there instead (the daemon logs
+    `blocked a suspend request`), and `/sys/power/pm_test` is set to `freezer` as a second layer. Stopping the
+    watchdog undoes both.
+  - The daemon writes a status line every minute (`lpdash/heartbeat.txt`, including suspend counts) and copies the
+    system log line by line to `lpdash/messages.live`, because `/var/log/messages` lives in RAM and is lost on a
+    restart. At the next boot they become `heartbeat.prev.txt` and `messages.prev.txt`, and `log.txt` gets the reboot
+    reason and the last heartbeat.
 - **Autostart**: the jailbreak's `/etc/upstart/kmc.conf` runs `/mnt/us/emergency.sh` at boot, which starts
   `lpdash/autostart.sh`. That script starts the watchdog, waits for the UI and Wi-Fi, then starts the daemon and the app.
   - If the Kindle boots 3 times within 15 minutes, `lpdash/autostart.off` is created and autostart stops.
@@ -160,7 +167,7 @@ Tap the Dev shell item again to turn the shell off when you are done.
 | STALE DATA banner | Wi-Fi is off or the API is failing. `log.txt` shows the HTTP codes. If you see `429`, raise `INTERVAL`. |
 | Tapping the book shows a message, then goes back Home | The app opens about 4 s after the scriptlet exits, so wait a moment. If it never opens, check that `com.lpagent.dashboard` is in `/var/local/appreg.db` (`handlerIds` table). |
 | Net worth differs from the app by a few cents | Prices move between the two fetches. |
-| The Kindle froze (the clock on the top bar stopped too) | Hold the power button for about 9 s. With the watchdog on (`WATCHDOG=1`) it restarts by itself within about a minute. Afterwards, `lpdash/heartbeat.prev.txt` shows the last minute it was alive and `messages.prev.txt` the system log just before. |
+| The Kindle froze (the clock on the top bar stopped too) | Hold the power button for about 9 s. With the watchdog on (`WATCHDOG=1`, the default) this should not happen: suspend is blocked and a hang resets the Kindle within about a minute. Afterwards, `lpdash/heartbeat.prev.txt` shows the last minute it was alive and `messages.prev.txt` the system log just before. |
 | The Kindle restarted by itself | Look for `autostart: boot (reboot reason: ...)` and `watchdog:` lines in `log.txt`, or run `dmesg \| grep -i "reboot reason"`. `PWRON_LONGPRESS` means the power button was held for about 9 s. |
 | Can't reach the dev shell | The IP may have changed after a reboot (DHCP), and a reboot also turns the shell off. Tap the item again: it prints the IP. |
 

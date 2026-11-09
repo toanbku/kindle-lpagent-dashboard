@@ -11,6 +11,7 @@ DATA=$DIR/data
 LOG=$DIR/log.txt
 PIDF=$DIR/lpdashd.pid
 HBF=/var/tmp/lpdash.hb          # heartbeat (uptime seconds) that lpwdog.sh checks, in RAM
+LIVE=$DIR/messages.live         # copy of the system log, see startlog()
 FBINK=${FBINK:-/mnt/us/libkh/bin/fbink}
 : "${INTERVAL:=300}" "${FLASH_EVERY:=12}" "${GAP:=6}"
 
@@ -27,7 +28,8 @@ if [ -n "$old" ] && [ "$old" != "$$" ] && grep -q lpdashd "/proc/$old/cmdline" 2
   echo "lpdashd is already running (pid $old)"; exit 0
 fi
 echo $$ > "$PIDF"
-cleanup() { [ -n "$SLP" ] && kill $SLP 2>/dev/null; [ "$(cat "$PIDF" 2>/dev/null)" = "$$" ] && rm -f "$PIDF"; log "stop pid $$"; exit 0; }
+cleanup() { [ -n "$SLP" ] && kill $SLP 2>/dev/null; [ -n "$LOGP" ] && kill $LOGP 2>/dev/null
+  [ "$(cat "$PIDF" 2>/dev/null)" = "$$" ] && rm -f "$PIDF"; log "stop pid $$"; exit 0; }
 trap cleanup INT TERM
 
 # fetch <name> <path> <extra query>  ->  data/<name>.js  (window.LPRAW.<name> = {...})
@@ -57,11 +59,16 @@ keepalive() {
   beat
   lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
   st=$(lipc-get-prop com.lab126.powerd state 2>/dev/null)
-  # Evidence for when the whole Kindle freezes: /var/log/messages lives in RAM and is lost on the
-  # forced restart, so keep the last minute of it (and a status line) on /mnt/us.
-  # autostart.sh moves them to *.prev.txt at the next boot.
-  echo "$(date '+%m-%d %H:%M:%S') up=${up%.*}s state=$st memavail=$(memavail) load=$(cut -d' ' -f1-3 /proc/loadavg)" > "$DIR/heartbeat.txt"
-  tail -n 150 /var/log/messages > "$DIR/messages.tail" 2>/dev/null
+  # Evidence for when the whole Kindle freezes: a status line on /mnt/us (autostart.sh moves it to
+  # heartbeat.prev.txt at the next boot). susp/fail count system suspends since boot.
+  echo "$(date '+%m-%d %H:%M:%S') up=${up%.*}s state=$st memavail=$(memavail) load=$(cut -d' ' -f1-3 /proc/loadavg)" \
+    "susp=$(sed -n 's/^success: //p' /sys/kernel/debug/suspend_stats 2>/dev/null) fail=$(sed -n 's/^fail: //p' /sys/kernel/debug/suspend_stats 2>/dev/null)" \
+    > "$DIR/heartbeat.txt"
+  # lpwdog.sh bind-mounts this file over /sys/power/state: anything in it is a blocked suspend request
+  if [ -s /var/tmp/lpdash.power_state ]; then
+    log "blocked a suspend request ($(head -c 20 /var/tmp/lpdash.power_state)), powerd state=$st"
+    : > /var/tmp/lpdash.power_state
+  fi
   case "$st" in
     screenSaver|readyToSuspend|suspended)
       log "device is in $st -> waking it up"
@@ -74,6 +81,14 @@ keepalive() {
 }
 # long sleep that still runs keepalive once a minute
 idle() { left=$1; while [ "$left" -gt 0 ]; do keepalive; s=60; [ "$left" -lt 60 ] && s=$left; nap "$s"; left=$((left - s)); done; }
+
+# /var/log/messages lives in RAM and is lost when a frozen Kindle is restarted, so copy it line by
+# line to /mnt/us (rotated at ~400 KB; autostart.sh renames it to messages.prev.txt at boot), and
+# make the kernel write dirty data out after 3 s instead of 30 s so the last lines reach the disk.
+LOGP=
+startlog() { tail -n 0 -F /var/log/messages >> "$LIVE" 2>/dev/null & LOGP=$!; }
+echo 300 > /proc/sys/vm/dirty_expire_centisecs 2>/dev/null
+startlog
 
 log "start pid $$ chain=$LPA_CHAIN interval=${INTERVAL}s"
 # Frontlight: FRONTLIGHT in config (0 = off). Only set at start, so manual changes stick.
@@ -99,5 +114,6 @@ while :; do
 
   # keep the log under ~200KB
   if [ "$(wc -c < "$LOG")" -gt 200000 ]; then tail -n 500 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"; fi
+  if [ "$(wc -c < "$LIVE" 2>/dev/null || echo 0)" -gt 400000 ]; then kill $LOGP 2>/dev/null; mv "$LIVE" "$LIVE.1"; startlog; fi
   idle "$INTERVAL"
 done

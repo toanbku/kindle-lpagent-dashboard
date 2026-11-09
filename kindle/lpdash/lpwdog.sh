@@ -13,6 +13,16 @@
 #   The reboot check turns itself off after 3 such reboots without a healthy hour in between,
 #   so a bug in it cannot keep rebooting the Kindle.
 #
+# It also blocks system suspend while it runs. On a PW4 running the dashboard, a suspend request
+# hangs the Kindle (reproduced with `echo mem > /sys/power/state`), and the chip pauses its
+# countdown in low-power modes (WDZST: set before Linux starts, write-once), so that hang never
+# got reset. Two layers:
+#   1. a scratch file is bind-mounted over /sys/power/state, so a suspend request lands in that
+#      file instead of the kernel (the daemon logs it as "blocked a suspend request");
+#   2. /sys/power/pm_test=freezer, in case a request still gets through: the drivers and the SoC
+#      then stay up and the watchdog can still reset the Kindle.
+# Stopping the watchdog undoes both.
+#
 # "LP Agent - Stop dashboard" stops it and disarms the chip (magic close "V").
 # WATCHDOG=0 in config.sh turns it off.
 
@@ -34,7 +44,14 @@ if [ -n "$old" ] && [ "$old" != "$$" ] && grep -q lpwdog "/proc/$old/cmdline" 2>
   echo "lpwdog is already running (pid $old)"; exit 0
 fi
 [ -c "$DEV" ] || { log "no $DEV, not started"; exit 0; }
+
+PMT=/sys/power/pm_test
+PST=/sys/power/state
+PSF=/var/tmp/lpdash.power_state       # where suspend requests land (the daemon watches it)
 exec 3>"$DEV" || { log "cannot open $DEV"; exit 1; }
+[ -w "$PMT" ] && echo freezer > "$PMT" 2>/dev/null
+if ! grep -q " $PST " /proc/mounts; then : > "$PSF"; mount --bind "$PSF" "$PST" 2>/dev/null; fi
+blocked() { grep -q " $PST " /proc/mounts && echo "suspend blocked" || echo "suspend NOT blocked"; }
 echo $$ > "$PIDF"
 rm -f "$FLAG"
 renice -n -10 -p $$ > /dev/null 2>&1
@@ -44,6 +61,8 @@ disarm() {
   [ -f "$FLAG" ] && return 0                   # our own reboot: stay armed (see the main loop)
   [ -n "$SLP" ] && kill $SLP 2>/dev/null
   printf V >&3; exec 3>&-
+  [ -w "$PMT" ] && echo none > "$PMT" 2>/dev/null
+  grep -q " $PST " /proc/mounts && umount "$PST" 2>/dev/null
   [ "$(cat "$PIDF" 2>/dev/null)" = "$$" ] && rm -f "$PIDF"
   log "stopped, chip disarmed"; exit 0
 }
@@ -72,7 +91,7 @@ check_daemon() {
   fi
 }
 
-log "started pid $$ on $DEV (feed every ${FEED}s, daemon counts as stuck after ${STALE}s)"
+log "started pid $$ on $DEV (feed every ${FEED}s, daemon counts as stuck after ${STALE}s, $(blocked), pm_test=$(sed -n 's/.*\[\(.*\)\].*/\1/p' "$PMT" 2>/dev/null))"
 n=0; CHK=
 while :; do
   if [ -f "$FLAG" ]; then

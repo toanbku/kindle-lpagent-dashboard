@@ -30,6 +30,9 @@ file is the operator's checklist plus the gotchas that cost time.
 - **The watchdog (`lpwdog.sh`) holds the hardware watchdog open.** Stop it only with a plain `kill` (TERM), which
   disarms the chip. `kill -9` or `kill -STOP` on it resets the Kindle within 60 s. If the daemon is killed hard and
   leaves its pidfile behind, the watchdog starts it again within a minute.
+- **Never send a suspend request to test something** (`echo mem > /sys/power/state`, `powerButton`) unless
+  `lpwdog.sh` is running: on a PW4 a suspend request hangs the Kindle, and without the block it stays frozen until
+  someone holds the power button.
 - **The dev shell is passwordless root over telnet.**
   - Only allow the user's own computer IP (`DEV_SHELL_ALLOW_IP`).
   - Remind the user to turn it off when finished.
@@ -65,7 +68,8 @@ file is the operator's checklist plus the gotchas that cost time.
 
 ## 3. Update or debug over Wi-Fi
 
-1. The user taps **LP Agent - Dev shell (on/off)**. It prints `Dev shell ON: <ip>:2323`.
+1. The user taps **LP Agent - Dev shell (on/off)**. It prints `Dev shell ON: <ip>:2323`. With `DEV_SHELL_AT_BOOT=1`
+   in `config.sh` it also comes on at every boot (tapping the item then turns it off).
 2. If you don't know the IP, find it:
    - A reboot can give the Kindle a new IP (DHCP), and a reboot also turns the dev shell off.
    - Ping-sweep the LAN, then run `arp -an`. Amazon devices have MAC prefixes such as `1c:4d:66`.
@@ -108,7 +112,7 @@ file is the operator's checklist plus the gotchas that cost time.
 | "No data yet" | The daemon is not running or `config.sh` is missing. Check `lpdash/log.txt`. |
 | STALE DATA banner | Wi-Fi is off or the API is failing. `log.txt` has the HTTP codes. `429` = rate limit, so keep the 6 s gaps and raise `INTERVAL`. `000` is a network/TLS blip that usually recovers on the next try. |
 | Screensaver appears | Something reset `preventScreenSaver` to 0. The daemon's `keepalive` sets it every minute, and when `state` is `screenSaver` it sends `wakeUp 1` (that property only works while the screensaver shows) and `lipc-set-prop com.lab126.blanket unload ad_screensaver` to clear the Special Offers lock screen. |
-| Kindle froze (clock on the top bar stopped too) | A whole-device hang, not the daemon. Hold power ~9 s. With `WATCHDOG=1` (default) `lpwdog.sh` feeds `/dev/watchdog0` (imx2-wdt, 60 s) and the chip resets a frozen Kindle by itself. Evidence of the last run: `lpdash/heartbeat.prev.txt`, `lpdash/messages.prev.txt`, and the `autostart: boot (reboot reason: ...)` line in `log.txt`. |
+| Kindle froze (clock on the top bar stopped too) | A whole-device hang caused by a suspend request (reproduced on a PW4), not the daemon. The watchdog chip pauses during low-power modes (WCR `0x773D`: WDZST=1, latched before Linux, write-once), so it can't catch it. `lpwdog.sh` (`WATCHDOG=1`, default) therefore bind-mounts `/var/tmp/lpdash.power_state` over `/sys/power/state` and sets `/sys/power/pm_test` to `freezer`. Check: `grep " /sys/power/state " /proc/mounts` and `blocked a suspend request` lines in `log.txt`. Evidence of the last run: `heartbeat.prev.txt` (has `susp=`/`fail=` counts), `messages.prev.txt`, and the `autostart: boot (reboot reason: ...)` line. |
 | Kindle restarted by itself | Run `dmesg \| grep -i "reboot reason"`. `PWRON_LONGPRESS` = the power button was held for about 9 s, not a crash. |
 | Dashboard did not come back after a reboot | Check `log.txt` for `autostart:` lines and look for `lpdash/autostart.off` (the boot-loop guard creates it after 3 boots within 15 min). `/etc/upstart/kmc.conf` must exist. |
 | App opens then closes, or the Store opens instead | Don't launch through the Store or Mesquito: online, the Store loads Amazon's page. Use the registered WAF app (`register_waf.sql`). The scriptlet re-registers it if it is missing. |

@@ -15,3 +15,4 @@ WATCHDOG=1         # 1 = hardware watchdog resets the Kindle if it freezes (lpwd
 # Optional: LAN IP of YOUR computer, allowed to use the "LP Agent - Dev shell" scriptlet
 # (passwordless root telnet on port 2323). Leave empty to keep the dev shell disabled.
 DEV_SHELL_ALLOW_IP=""
+DEV_SHELL_AT_BOOT=0               # 1 = turn the dev shell on at every boot (it is off after a restart)
