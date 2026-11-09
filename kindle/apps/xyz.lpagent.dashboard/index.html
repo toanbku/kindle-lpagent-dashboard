@@ -44,6 +44,7 @@
   table.grid tr.r2 td { border-top: 2px solid #000; }
   .tile-v { font-size: 46px; font-weight: 800; margin-top: 4px; line-height: 1.05; white-space: nowrap; }
   .tile-v small { font-size: 26px; font-weight: 700; margin-left: 4px; }
+  .tile-e { font-size: 26px; font-weight: 700; margin-top: 2px; white-space: nowrap; }
   .tile-s { font-size: 24px; color: #333; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
 
   .sec { padding-top: 22px; }
@@ -56,6 +57,8 @@
   .pair { font-size: 36px; font-weight: 800; white-space: nowrap; }
   .val { font-size: 36px; font-weight: 800; text-align: right; white-space: nowrap; }
   .meta { font-size: 24px; color: #333; white-space: nowrap; overflow: hidden; }
+  .meta.mrow { position: relative; padding-right: 230px; }
+  .meta .metaE { position: absolute; right: 0; top: 0; font-weight: 700; color: #000; }
   table.l2 { width: 100%; margin-top: 6px; }
   table.l2 td { vertical-align: middle; height: 36px; }
   .pill { display: inline-block; vertical-align: middle; line-height: 24px; font-size: 20px; font-weight: 800; letter-spacing: 2px; padding: 4px 10px; border: 3px solid #000; white-space: nowrap; }
@@ -129,6 +132,16 @@ function moneyBig(x, o) {
   if (U === 'USD') return s + '$' + num(a, a >= 1000 ? 0 : 2);
   return s + num(a, 3) + '<small>' + U + '</small>';
 }
+// ETH amounts: 3 decimals from 1 ETH, 4 below, 2 significant digits for dust
+function eth(x, o) {
+  if (x == null || isNaN(x)) return '';
+  o = o || {};
+  var a = Math.abs(x), s = o.signed ? sgn(x) : '';
+  var t = a >= 1 ? a.toFixed(3) : (a >= 0.001 || a === 0 ? a.toFixed(4) : String(Number(a.toPrecision(2))));
+  return s + t + ' ETH';
+}
+function nv(x) { return x == null || x === '' ? null : f(x); }
+function sumN(arr, k) { var s = 0; for (var i = 0; i < arr.length; i++) { if (arr[i][k] == null) return null; s += arr[i][k]; } return s; }
 function pct(x) { return sgn(x) + Math.abs(x).toFixed(1) + '%'; }
 function p2(n) { return (n < 10 ? '0' : '') + n; }
 // ISO "2026-11-01T18:15:33.000Z" -> ms (parsed by hand: old WebKit gets Date.parse wrong)
@@ -185,6 +198,15 @@ function build(R) {
     for (var j = 0; j < overview.length; j++) s += f((overview[j][k] || {})[period]);
     return s;
   }
+  // LP Agent's own ETH (native) accounting; null when the API sent none
+  function nsum(key, period) {
+    var s = 0, seen = false;
+    for (var j = 0; j < overview.length; j++) {
+      var o = overview[j][key + '_native'];
+      if (o && o[period] != null) { s += f(o[period]); seen = true; }
+    }
+    return seen ? s : null;
+  }
   var closed1m = 0, wins1m = 0, ovUpd = 0;
   for (i = 0; i < overview.length; i++) {
     r = overview[i];
@@ -206,6 +228,7 @@ function build(R) {
       pnlPct: f(useUsd ? pnl.percent : pnl.percentNative),
       unclaimed: m(p.unCollectedFee !== undefined ? p.unCollectedFee : p.uncollectedFee, p.unCollectedFeeNative),
       collected: m(p.collectedFee, p.collectedFeeNative),
+      valueEth: nv(p.valueNative), pnlEth: nv(pnl.valueNative), unclaimedEth: nv(p.unCollectedFeeNative),
       inRange: !!(p.inRange !== undefined ? p.inRange : p.isInRange),
       lower: pr.length > 2 ? f(pr[0]) : null, upper: pr.length > 2 ? f(pr[1]) : null, price: pr.length > 2 ? f(pr[2]) : null
     });
@@ -231,9 +254,22 @@ function build(R) {
     });
   }
   var openVal = sum(pos, 'value');
+  var networth = useUsd ? walletUsd + openVal + sum(pos, 'unclaimed') : null;
+
+  // ETH next to the dollars (Robinhood chain, whose native token is ETH). PnL and fees come from
+  // LP Agent's ETH accounting (not dollars divided by today's price); net worth is converted.
+  var ethPrice = null;
+  for (i = 0; i < bal.length && !ethPrice; i++)
+    if (bal[i].symbol === 'ETH' || bal[i].tokenAddress === '0x0000000000000000000000000000000000000000') ethPrice = f(bal[i].price) || null;
+  if (!ethPrice && opened.length) ethPrice = f(opened[0].nativePrice) || null;
+  var E = useUsd ? {
+    price: ethPrice, networth: ethPrice ? networth / ethPrice : null,
+    pnl: { d7: nsum('total_pnl', '7D'), m1: nsum('total_pnl', '1M'), all: nsum('total_pnl', 'ALL') },
+    unreal: sumN(pos, 'pnlEth'), unclaimed: sumN(pos, 'unclaimedEth')
+  } : null;
   return {
-    meta: meta, chain: chain, wallet: meta.owner || '',
-    networth: useUsd ? walletUsd + openVal + sum(pos, 'unclaimed') : null, walletIdle: useUsd ? walletUsd : null,
+    meta: meta, chain: chain, wallet: meta.owner || '', eth: E,
+    networth: networth, walletIdle: useUsd ? walletUsd : null,
     pnl: { d7: ssum('total_pnl', '7D'), m1: ssum('total_pnl', '1M'), all: ssum('total_pnl', 'ALL') },
     fees: { d7: ssum('total_fee', '7D'), m1: ssum('total_fee', '1M') },
     winRate: closed1m ? wins1m / closed1m : null, closed1m: closed1m, ovUpd: ovUpd,
@@ -282,7 +318,7 @@ function render(D, stale) {
   var fetched = (D.meta.fetchedAt || 0) * 1000;
   var unclaimed = sum(D.open, 'unclaimed');
   var nw = D.networth != null ? D.networth : D.openVal;
-  var h = [];
+  var E = D.eth, h = [];
 
   setTitle('LP Agent · ' + (D.chain === 'SOL' ? 'Solana' : 'Robinhood'));
   if (stale) h.push('<div class="banner">' + stale + '</div>');
@@ -290,28 +326,32 @@ function render(D, stale) {
   // hero
   var sub = [];
   if (D.walletIdle != null) sub.push('wallet ' + money(D.walletIdle) + ' · in pools ' + money(D.openVal) + ' · fees ' + money(unclaimed));
-  sub.push('all-time PnL <b>' + money(D.pnl.all, { signed: true }) + '</b>');
+  sub.push('all-time PnL <b>' + money(D.pnl.all, { signed: true }) + '</b>' +
+    (E && E.pnl.all != null ? ' · <b>' + eth(E.pnl.all, { signed: true }) + '</b>' : ''));
   h.push('<div class="hero pad"><table class="top"><tr><td class="label">' + (D.networth != null ? 'Net worth' : 'LP value') +
-    '</td><td class="when">updated ' + (fetched ? clock(fetched, tz) : '--') + '</td></tr></table>' +
-    '<div class="num">' + (U === 'USD' ? money(nw) : num(nw, 3) + '<span>' + U + '</span>') + '</div>' +
+    '</td><td class="when">' + (E && E.price ? 'ETH ' + money(E.price) + ' · ' : '') + 'updated ' + (fetched ? clock(fetched, tz) : '--') + '</td></tr></table>' +
+    '<div class="num">' + (U === 'USD' ? money(nw) + (E && E.networth != null ? '<span>' + eth(E.networth) + '</span>' : '') :
+      num(nw, 3) + '<span>' + U + '</span>') + '</div>' +
     '<div class="sub" id="heroSub">' + sub.join(' · ') + '</div></div>');
 
   // six tiles
   var inR = 0, outNames = [];
   for (var i = 0; i < D.open.length; i++) { if (D.open[i].inRange) inR++; else outNames.push(D.open[i].pair); }
   var tiles = [
-    ['PnL 7D', moneyBig(D.pnl.d7, { signed: true }), 'fees 7D ' + money(D.fees.d7)],
-    ['PnL 30D', moneyBig(D.pnl.m1, { signed: true }), 'fees 30D ' + money(D.fees.m1)],
+    ['PnL 7D', moneyBig(D.pnl.d7, { signed: true }), 'fees 7D ' + money(D.fees.d7), E && eth(E.pnl.d7, { signed: true })],
+    ['PnL 30D', moneyBig(D.pnl.m1, { signed: true }), 'fees 30D ' + money(D.fees.m1), E && eth(E.pnl.m1, { signed: true })],
     ['Win rate 30D', D.winRate != null ? Math.round(D.winRate * 100) + '%' : '—', plural(D.closed1m, 'closed position')],
-    ['Unrealized PnL', moneyBig(sum(D.open, 'pnl'), { signed: true }), plural(D.open.length, 'position') + ' · ' + money(D.openVal)],
+    ['Unrealized PnL', moneyBig(sum(D.open, 'pnl'), { signed: true }), plural(D.open.length, 'position') + ' · ' + money(D.openVal),
+      E && eth(E.unreal, { signed: true })],
     ['In range', inR + '/' + D.open.length, 'out of range: ' + (outNames.length ? esc(outNames.join(', ')) : 'none')],
-    ['Unclaimed fees', moneyBig(unclaimed), 'across open positions']
+    ['Unclaimed fees', moneyBig(unclaimed), 'across open positions', E && eth(E.unclaimed)]
   ];
   var g = '<div class="pad"><table class="grid">';
   for (i = 0; i < 6; i++) {
     if (i % 3 === 0) g += '<tr' + (i ? ' class="r2"' : '') + '>';
     g += '<td' + (i % 3 === 0 ? ' class="first"' : '') + '><div class="label">' + tiles[i][0] + '</div><div class="tile-v">' +
-      tiles[i][1] + '</div><div class="tile-s">' + tiles[i][2] + '</div></td>';
+      tiles[i][1] + '</div>' + (E ? '<div class="tile-e">' + (tiles[i][3] || '&nbsp;') + '</div>' : '') +
+      '<div class="tile-s">' + tiles[i][2] + '</div></td>';
     if (i % 3 === 2) g += '</tr>';
   }
   h.push(g + '</table></div>');
@@ -339,7 +379,8 @@ function render(D, stale) {
     if (p.unclaimed) metaParts.push('unclaimed ' + money(p.unclaimed));
     o += '<div class="pos' + (i === D.open.length - 1 ? ' last' : '') + '">' +
       '<table class="row"><tr><td class="pair">' + esc(p.pair) + '</td><td class="val">' + money(p.value) + '</td></tr></table>' +
-      '<div class="meta">' + metaParts.join(' · ') + '</div>' +
+      (E && p.valueEth != null ? '<div class="meta mrow">' + metaParts.join(' · ') + '<span class="metaE">' + eth(p.valueEth) + '</span></div>'
+        : '<div class="meta">' + metaParts.join(' · ') + '</div>') +
       '<table class="l2"><tr><td style="width:1px"><span class="pill ' + (p.inRange ? 'in' : 'out') + '"><span class="dot"></span>' +
       (p.inRange ? 'IN RANGE' : 'OUT' + side + dist) + '</span></td><td>' + mini + '</td>' +
       '<td class="pnl" style="width:1px">' + money(p.pnl, { signed: true }) + ' (' + pct(p.pnlPct) + ')</td></tr></table></div>';

@@ -19,6 +19,7 @@ Open API every 5 minutes and a local web app draws it.
   - **Net worth**: wallet + open positions + unclaimed fees, the same total the LP Agent app shows.
   - **Six tiles**: PnL 7D and 30D, win rate 30D, unrealized PnL, positions in range, unclaimed fees.
   - **Open positions**: an IN RANGE / OUT badge and a small range bar for each one.
+  - **Recently closed** fills the space left when you have only a few open positions.
 - **Page 2** (tap the bottom half of page 1) shows a range / price / claimed / unclaimed table, your wallet tokens and recently closed positions. Any tap goes back, and the dashboard also returns to page 1 after 2 idle minutes.
 - **Always on**:
   - Data refreshes every 5 minutes, and a banner warns you when the data is stale.
@@ -27,7 +28,8 @@ Open API every 5 minutes and a local web app draws it.
   - The screensaver is kept away, and the dashboard comes back by itself after a reboot.
 
 Supported chains:
-- `ROBINHOOD`, with amounts in USD.
+- `ROBINHOOD`, with amounts in USD and ETH next to them (PnL and fees from LP Agent's own ETH accounting, net worth
+  converted at the current ETH price).
 - `SOL`, with amounts in SOL.
 
 ## Requirements
