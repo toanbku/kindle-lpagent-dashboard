@@ -261,6 +261,20 @@ function footer(D) {
     Math.round((D.meta.interval || 300) / 60) + ' min</div>' +
     '<div class="r">page ' + PAGE + '/' + PAGES + ' · ' + (PAGE === 1 ? 'tap bottom half for more' : 'tap to go back') + '</div></div>';
 }
+// "Recently closed" list. layout() drops rows from the end until the page fits the screen;
+// minRows = fewest rows worth showing (with fewer, the whole section goes).
+function closedSection(D, minRows) {
+  if (!D.closed.length) return '';
+  var c = '<div class="sec2 pad" id="closedSec" data-min="' + minRows + '"><table class="head"><tr><td class="label">Recently closed</td><td class="r">PnL' +
+    (U === 'USD' ? '' : ' (' + U + ')') + '</td></tr></table><table class="closed">';
+  for (var i = 0; i < D.closed.length; i++) {
+    var x = D.closed[i];
+    c += '<tr class="' + (i === 0 ? 'first ' : '') + 'cr"><td class="p">' + esc(x.pair) + '</td><td class="m">' +
+      (x.closedAt ? ago(x.closedAt) : '') + (x.leader ? ' · ' + esc(x.leader) : '') + '</td><td class="n">' +
+      money(x.pnl, { signed: true, unit: false }) + '</td><td class="c">' + pct(x.pnlPct) + '</td></tr>';
+  }
+  return c + '</table></div>';
+}
 function render(D, stale) {
   LAST_D = D; LAST_STALE = stale;
   if (PAGE === 2) return renderPage2(D, stale);
@@ -331,6 +345,7 @@ function render(D, stale) {
       '<td class="pnl" style="width:1px">' + money(p.pnl, { signed: true }) + ' (' + pct(p.pnlPct) + ')</td></tr></table></div>';
   }
   h.push(o + '</div>');
+  h.push(closedSection(D, 3));    // only shows when few positions leave room for at least 3 rows
 
   h.push(footer(D));
   $('stage').innerHTML = h.join('');
@@ -372,18 +387,7 @@ function renderPage2(D, stale) {
   } else t += '<div class="empty" style="padding:10px 0">Wallet is empty</div>';
   h.push(t + '</div>');
 
-  // recently closed (long list, trimmed to fit the screen)
-  if (D.closed.length) {
-    var c = '<div class="sec2 pad" id="closedSec"><table class="head"><tr><td class="label">Recently closed</td><td class="r">PnL' +
-      (U === 'USD' ? '' : ' (' + U + ')') + '</td></tr></table><table class="closed">';
-    for (i = 0; i < D.closed.length; i++) {
-      var x = D.closed[i];
-      c += '<tr class="' + (i === 0 ? 'first ' : '') + 'cr"><td class="p">' + esc(x.pair) + '</td><td class="m">' +
-        (x.closedAt ? ago(x.closedAt) : '') + (x.leader ? ' · ' + esc(x.leader) : '') + '</td><td class="n">' +
-        money(x.pnl, { signed: true, unit: false }) + '</td><td class="c">' + pct(x.pnlPct) + '</td></tr>';
-    }
-    h.push(c + '</table></div>');
-  }
+  h.push(closedSection(D, 1));   // long list, trimmed to fit the screen
   h.push(footer(D));
   $('stage').innerHTML = h.join('');
   layout(true);
@@ -408,22 +412,26 @@ function onTap(e) {
 document.addEventListener('click', onTap, false);
 
 // Fit the screen: innerHeight is only right after the Kindle draws its system bar (~2 s), so run it a few times.
-// 1) drop "Recently closed" rows until it fits; 2) if still too tall, zoom out.
+// 1) drop "Recently closed" rows until it fits; 2) if still too tall, zoom out;
+// 3) if shorter than the screen, push the footer down to the bottom edge.
 var lastAvail = 0;
 function layout(force) {
   var st = $('stage'), avail = window.innerHeight || document.documentElement.clientHeight || H;
   if (!force && avail === lastAvail) return;
   lastAvail = avail;
   st.style.zoom = '';
+  var ft = $('ftr');
+  if (ft) ft.style.marginTop = '';
   var sec = $('closedSec');
   if (sec) {
     var crs = sec.getElementsByTagName('tr'), list = [], i;
     for (i = 0; i < crs.length; i++) if (/(^| )cr( |$)/.test(crs[i].className)) list.push(crs[i]);
     while (list.length && st.offsetHeight > avail) { var last = list.pop(); last.parentNode.removeChild(last); }
-    if (!list.length) sec.parentNode.removeChild(sec);
+    if (list.length < (parseInt(sec.getAttribute('data-min'), 10) || 1)) sec.parentNode.removeChild(sec);
   }
   var hh = st.offsetHeight, s = hh > avail ? avail / hh : 1;
   if (s < 1) st.style.zoom = s.toFixed(3);
+  else if (ft && hh < avail) ft.style.marginTop = ((parseInt(window.getComputedStyle(ft, null).marginTop, 10) || 0) + avail - hh) + 'px';
 }
 // shrink a one-line element's font until it fits its box (big numbers on the hero line)
 function fitLine(id, minPx) {
